@@ -330,22 +330,40 @@ void app_main(void) {
 
 | ข้อการทดลอง | สถานการณ์ทดสอบ | Event `WIFI_EVENT_STA_CONNECTED` (เกิด/ไม่เกิด) | Event `IP_EVENT_STA_GOT_IP` (เกิด/ไม่เกิด) | ผลการทดลอง | Disconnect Reason Code (ถ้ามี) |
 | :---: | :--- | :---: | :---: | :---: | :--- |
-| **5.4.1** | Password ถูกต้อง | | | | |
-| **5.4.2** | Password ผิด | | | | |
+| **5.4.1** | Password ถูกต้อง | ไม่เกิด | ไม่เกิด | ล้มเหลว (Failed) | 201 (0xC9) WIFI_REASON_NO_AP_FOUND |
+| **5.4.2** | Password ผิด | ไม่เกิด | ไม่เกิด | ล้มเหลว (Failed) | 201 (0xC9) WIFI_REASON_NO_AP_FOUND |
 
 ### 6.2 บันทึกข้อมูล IP Network จาก Event `IP_EVENT_STA_GOT_IP` (ข้อ 5.4.1)
 
 | พารามิเตอร์ Network Layer | ค่าที่จัดสรรได้จริงจาก DHCP Server |
 | :--- | :--- |
-| **IP Address** | |
-| **Subnet Mask** | |
-| **Default Gateway** | |
+| **IP Address** | N/A (ไม่ได้รับเนื่องจากหา AP ไม่พบ) |
+| **Subnet Mask** | N/A |
+| **Default Gateway** | N/A |
 
 ---
 
 ## 7. คำถามท้ายการทดลอง (Post-Lab Questions)
 
-1. เหตุใดกระบวนการ **4-Way Handshake** จึงพิสูจน์ทราบรหัสผ่าน Wi-Fi ได้โดยไม่ต้องส่งรหัสผ่าน (Passphrase) ลอยไปในอากาศเลยแม้แต่แพ็กเกจเดียว?
-2. อธิบายบทบาทและที่มาของคีย์ **PMK (Pairwise Master Key)** และ **PTK (Pairwise Transient Key)** ว่ามีความสัมพันธ์กันอย่างไรในการเข้ารหัสเฟรมข้อมูล?
-3. เหตุใดเมื่อเราพิมพ์ Password ผิด (ข้อ 5.4.2) ESP32 จึงยังคงได้รับ Event **`WIFI_EVENT_STA_CONNECTED`** ก่อนที่จะเกิด Event **`WIFI_EVENT_STA_DISCONNECTED`** ตามมาในภายหลัง?
-4. หากเครือข่าย Wi-Fi ไม่มี DHCP Server (ไม่มีการแจก IP อัตโนมัติ) ผลการทดลองในข้อ 5.4.1 จะหยุดอยู่ที่ขั้นตอนใด และจะไม่เกิด Event ใดขึ้น?
+### 1. เหตุใดกระบวนการ 4-Way Handshake จึงพิสูจน์ทราบรหัสผ่าน Wi-Fi ได้โดยไม่ต้องส่งรหัสผ่าน (Passphrase) ลอยไปในอากาศเลยแม้แต่แพ็กเกจเดียว?
+* **คำอธิบาย:** เพราะทั้งฝั่ง AP และ ESP32 นำรหัสผ่านไปแปลงเป็น **PMK (Pairwise Master Key)** ล่วงหน้าภายในฝั่งตนเอง จากนั้นระหว่างทำ 4-Way Handshake ทั้งสองฝั่งแลกเปลี่ยนเฉพาะค่าสุ่ม (**ANonce** จาก AP และ **SNonce** จาก Station) เพื่อนำมาคำนวณสร้างคีย์ชั่วคราวชื่อ **PTK**
+* ความถูกต้องของรหัสผ่านถูกตรวจสอบผ่านค่า **MIC (Message Integrity Code)** ที่แนบมากับเฟรม EAPOL-Key หากรหัสผ่านตรงกัน ค่า PTK ที่สร้างได้จะเหมือนกัน ส่งผลให้ค่า MIC ตรงกัน จึงสามารถพิสูจน์รหัสผ่านได้โดยไม่ต้องส่ง Text รหัสผ่านผ่านคลื่นวิทยุเลย
+
+---
+
+### 2. อธิบายบทบาทและที่มาของคีย์ PMK (Pairwise Master Key) และ PTK (Pairwise Transient Key) ว่ามีความสัมพันธ์กันอย่างไรในการเข้ารหัสเฟรมข้อมูล?
+* **PMK (Pairwise Master Key):** เป็นคีย์หลักแบบ Static ที่คำนวณถอดรหัสมาจาก `Password WPA2 + SSID` ผ่านอัลกอริทึม PBKDF2 (เป็นวัตถุดิบตั้งต้น)
+* **PTK (Pairwise Transient Key):** เป็นคีย์ชั่วคราวแบบ Dynamic ที่ถูกคำนวณขึ้นใหม่ทุกครั้งที่เชื่อมต่อ โดยนำ `PMK + ANonce + SNonce + MAC(AP) + MAC(Station)` มารวมกัน
+* **ความสัมพันธ์ในการเข้ารหัส:** PMK ทำหน้าที่เป็นต้นทางในการสร้าง PTK ส่วน PTK จะถูกย่อยออกเป็นคีย์ย่อยต่างๆ โดยมีคีย์ **TK (Temporal Key)** นำไปใช้เข้ารหัส/ถอดรหัสเฟรมข้อมูล Unicast (เช่น AES-CCMP) ระหว่าง ESP32 กับ AP จริงๆ
+
+---
+
+### 3. เหตุใดเมื่อเราพิมพ์ Password ผิด (ข้อ 5.4.2) ESP32 จึงยังคงได้รับ Event `WIFI_EVENT_STA_CONNECTED` ก่อนที่จะเกิด Event `WIFI_EVENT_STA_DISCONNECTED` ตามมาในภายหลัง?
+* **คำอธิบาย:** เนื่องจาก Event `WIFI_EVENT_STA_CONNECTED` ถูกยิงออกมาเมื่อจบ **Phase 3 (Association Phase)** ซึ่งเป็นเพียงการตกลงเชื่อมต่อระดับ Link Layer (Layer 2 Open System Auth) เท่านั้น **โดยยังไม่ได้มีการตรวจสอบรหัสผ่าน WPA2**
+* เมื่อจบ Phase 3 ไดรเวอร์จะยิง Event `WIFI_EVENT_STA_CONNECTED` รายงานก่อน แล้วระบบจึงขยับเข้าสู่ **Phase 4 (4-Way Handshake)** เพื่อเช็ครหัสผ่าน เมื่อใส่ Password ผิด ค่า MIC ในเฟรม EAPOL-Key จะไม่ตรงกัน ทำให้ Handshake ล้มเหลว AP/ESP32 จึงตัดการเชื่อมต่อและส่ง Event `WIFI_EVENT_STA_DISCONNECTED` (Reason Code 15/204) ตามมาในภายหลัง
+
+---
+
+### 4. หากเครือข่าย Wi-Fi ไม่มี DHCP Server (ไม่มีการแจก IP อัตโนมัติ) ผลการทดลองในข้อ 5.4.1 จะหยุดอยู่ที่ขั้นตอนใด และจะไม่เกิด Event ใดขึ้น?
+* **ขั้นตอนที่หยุด:** การทดลองจะหยุดลงที่ **Phase 4 (4-Way Handshake สำเร็จ)**
+* **Event ที่จะไม่เกิดขึ้น:** จะ**ไม่เกิด Event `IP_EVENT_STA_GOT_IP`** เนื่องจากฝั่ง ESP32 ส่งคำร้องขอ DHCP Discover ออกไปแล้วแต่ไม่มี DHCP Server ตอบกลับเฟรม DHCP Offer/ACK ทำให้กระบวนการใน Phase 5 ไม่สมบูรณ์และเกิด Timeout ในที่สุด
