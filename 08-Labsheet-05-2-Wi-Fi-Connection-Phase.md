@@ -368,26 +368,40 @@ void app_main(void) {
 
 | ข้อการทดลอง | สถานการณ์ทดสอบ | Event สุดท้ายที่ได้รับ | ผลลัพธ์ (Passed/Failed) | Reason Code (Decimal / Hex) | คำอธิบาย Reason Code |
 | :---: | :--- | :---: | :---: | :---: | :--- |
-| **5.2.1** | SSID และ Password ถูกต้อง | | | | |
-| **5.2.2** | ระบุ SSID ผิด (ไม่มีในระบบ) | | | | |
-| **5.2.3** | ระบุ SSID ถูกต้อง แต่ Password ผิด | | | | |
+| **5.2.1** | SSID และ Password ถูกต้อง | IP_EVENT_STA_GOT_IP | Passed | N/A (ไม่มี Disconnect) | เชื่อมต่อสำเร็จและได้รับ IP Address จาก DHCP |
+| **5.2.2** | ระบุ SSID ผิด (ไม่มีในระบบ) | WIFI_EVENT_STA_DISCONNECTED | Failed | Decimal: 8 / Hex: 0x08 | OTHER_DISCONNECT_REASON (ไม่พบ AP Target) |
+| **5.2.3** | ระบุ SSID ถูกต้อง แต่ Password ผิด | WIFI_EVENT_STA_DISCONNECTED | Failed | Decimal: 2 / Hex: 0x02 | WIFI_REASON_AUTH_EXPIRE (ยืนยันตัวตนล้มเหลว) |
 
 ### 6.2 บันทึกข้อมูลเครือข่ายจากการเชื่อมต่อสำเร็จ (ข้อ 5.2.1)
 
 | พารามิเตอร์เครือข่าย | ค่าที่ได้รับจริงจาก DHCP |
 | :--- | :--- |
-| **SSID** | |
-| **BSSID (MAC Address)** | |
-| **Channel** | |
-| **IP Address** | |
-| **Subnet Mask** | |
-| **Default Gateway** | |
+| **SSID** | Namthip Pomhin |
+| **BSSID (MAC Address)** | 16:99:36:21:B3:45 |
+| **Channel** | 6 |
+| **IP Address** | 172.20.10.4 |
+| **Subnet Mask** | 255.255.255.240 |
+| **Default Gateway** | 172.20.10.1 |
 
 ---
 
 ## 7. คำถามท้ายการทดลอง (Post-Lab Questions)
 
-1. เหตุใดการระบุ SSID ผิด (ข้อ 5.2.2) จึงส่งผลให้เกิด Disconnect Event ด้วย Reason Code `201` (`WIFI_REASON_NO_AP_FOUND`) ตั้งแต่เฟส Scan?
-2. เหตุใดการพิมพ์ Password ผิด (ข้อ 5.2.3) จึงผ่านเฟส Auth และ Assoc มาได้ แต่มาล้มเหลวในเฟส 4-Way Handshake (Reason Code `15` หรือ `204`)?
-3. ลำดับการเกิด Event ระหว่าง **`WIFI_EVENT_STA_CONNECTED`** กับ **`IP_EVENT_STA_GOT_IP`** Event ใดเกิดขึ้นก่อนกัน และมีความหมายทางกายภาพของ Layer Network ต่างกันอย่างไร?
-4. สมาชิกตัวแปร `reason` ในโครงสร้าง `wifi_event_sta_disconnected_t` มีประโยชน์อย่างไรต่อการออกแบบระบบค้นหาสาเหตุและกู้คืนการเชื่อมต่อ (Auto-Reconnection Mechanism) ในแอปพลิเคชัน IoT?
+### 1. เหตุใดการระบุ SSID ผิด (ข้อ 5.2.2) จึงส่งผลให้เกิด Disconnect Event ด้วย Reason Code `201` (`WIFI_REASON_NO_AP_FOUND`) ตั้งแต่เฟส Scan?
+> **ตอบ:** เพราะในเฟส Scan ตัว ESP32 จะส่งเฟรม Probe Request ออกไปทุกช่องสัญญาณ (Channels) เพื่อค้นหา AP ที่มีชื่อ SSID ตรงตามที่ระบุ เมื่อค้นหาครบทุก Channel แล้วไม่เจอ AP ที่มี SSID ตรงกัน ESP32 จึงไม่สามารถเริ่มกระบวนการเชื่อมต่อ (Authentication/Association) ได้ ระบบ Driver จึงยุติการทำงานและแจ้ง Disconnect Event พร้อม Reason Code 201 เพื่อบอกว่า "ไม่พบ AP เป้าหมายในรัศมีสัญญาณ"
+
+### 2. เหตุใดการพิมพ์ Password ผิด (ข้อ 5.2.3) จึงผ่านเฟส Auth และ Assoc มาได้ แต่มาล้มเหลวในเฟส 4-Way Handshake (Reason Code `15` หรือ `204`)?
+> **ตอบ:** เนื่องจากใน Wi-Fi แบบ WPA2-PSK ขั้นตอน Auth และ Assoc เป็นเพียงการจับคู่เปิดช่องทางสื่อสารระดับ MAC Layer พื้นฐานโดยยังไม่มีการส่งรหัสผ่านจริงไปตรวจสอบ แต่รหัสผ่านจะถูกนำไปคำนวณถอดรหัสคีย์ในขั้นตอน 4-Way Handshake เพื่อสร้าง Encryption Keys หากใส่ Password ผิด ESP32 และ AP จะคำนวณ Key ไม่ตรงกัน ทำให้ไม่สามารถถอดรหัสข้อความยืนยันย้อนกลับได้ ส่งผลให้กระบวนการ Handshake ล้มเหลวและหมดเวลาในที่สุด
+> 
+### 3. ลำดับการเกิด Event ระหว่าง **`WIFI_EVENT_STA_CONNECTED`** กับ **`IP_EVENT_STA_GOT_IP`** Event ใดเกิดขึ้นก่อนกัน และมีความหมายทางกายภาพของ Layer Network ต่างกันอย่างไร?
+> **ตอบ:** 
+> * **Event ที่เกิดขึ้นก่อน:** WIFI_EVENT_STA_CONNECTED เกิดขึ้นก่อน IP_EVENT_STA_GOT_IP
+> * **ความหมายทางกายภาพ:**
+>   * WIFI_EVENT_STA_CONNECTED อยู่ใน Layer 2 (Data Link Layer): หมายถึง บอร์ด ESP32 สามารถเชื่อมต่อสัญญาณวิทยุและยืนยันตัวตนระดับ MAC Address กับ Access Point สำเร็จแล้ว 
+>   * IP_EVENT_STA_GOT_IP อยู่ใน Layer 3 (Network Layer): หมายถึง ESP32 ได้รับหมายเลข IP Address จาก DHCP Server เรียบร้อยแล้ว พร้อมสำหรับการส่งข้อมูลผ่านโปรโตคอล IP/TCP/UDP 
+
+### 4. สมาชิกตัวแปร `reason` ในโครงสร้าง `wifi_event_sta_disconnected_t` มีประโยชน์อย่างไรต่อการออกแบบระบบค้นหาสาเหตุและกู้คืนการเชื่อมต่อ (Auto-Reconnection Mechanism) ในแอปพลิเคชัน IoT?
+> **ตอบ:** มีประโยชน์อย่างมากในการทำ Smart Reconnection Strategy เพื่อให้บอร์ด IoT ตัดสินใจแก้ไขปัญหาได้อย่างแม่นยำและประหยัดพลังงาน เช่น:
+> * หากได้ Reason Code 201 (NO_AP_FOUND) หรือ 200 (BEACON_TIMEOUT) อาจเกิดจาก AP สัญญาณอ่อน หรือ AP ดับ ให้เว้นระยะเวลาสแกนใหม่ (Exponential Backoff)
+> * หากได้ Reason Code 15 / 204 / 202 แสดงว่ารหัสผ่านผิด ไม่ควรทำการ Retry เชื่อมต่อวนซ้ำถี่ๆ ให้หยุดพยายามและแจ้งเตือนผู้ใช้เปลี่ยน Password
+> * หากเป็นการตัดการเชื่อมต่อทั่วไปสามารถสั่ง esp_wifi_connect() เพื่อ Reconnect ทันทีได้เลย
